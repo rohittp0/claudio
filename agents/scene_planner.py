@@ -8,9 +8,9 @@ from typing import Any
 from anthropic import Anthropic
 import structlog
 
-from claudio.config import get_config
-from claudio.models.scene import Scene, ScenePlan, VideoRequirements
-from claudio.models.workflow_state import WorkflowState, WorkflowStatus
+from config import get_config
+from models.scene import Scene, ScenePlan, VideoRequirements
+from models.workflow_state import WorkflowState, WorkflowStatus
 
 logger = structlog.get_logger(__name__)
 
@@ -41,13 +41,15 @@ Your task is to gather the following information through a natural conversation:
 1. Business/product name (if applicable)
 2. Desired video duration in seconds
 3. Theme and style (e.g., fun, professional, energetic)
-4. Video quality preference (720p or 1080p)
-5. Any additional context or requirements
+4. Any additional context or requirements
 
 Important constraints:
-- Videos must be broken into scenes of maximum 8 seconds each (Veo API limit)
+- Veo 3.1 generates fixed 8-second video segments
+- Each scene must be 8 seconds or less in duration
+- For videos longer than 8 seconds, create multiple scenes (e.g., 25-second video = 4 scenes: 8s + 8s + 8s + 1s)
 - Each scene needs a detailed video prompt and an end-image prompt
 - The end image of one scene becomes the start image of the next (for continuity)
+- Plan for smooth narrative flow across scenes
 
 After gathering requirements, create a detailed scene plan with:
 - Scene-by-scene breakdown
@@ -64,13 +66,12 @@ Output format for the final scene plan:
     "business_name": "...",
     "video_purpose": "...",
     "duration": <total_seconds>,
-    "theme": "...",
-    "quality": "1080p"
+    "theme": "..."
   }},
   "scenes": [
     {{
       "scene_id": "scene_1",
-      "duration": <seconds>,
+      "duration": <seconds_max_8>,
       "video_prompt": "Detailed description of what happens in this scene...",
       "end_image_prompt": "Detailed description of the final frame..."
     }}
@@ -158,7 +159,6 @@ Output format for the final scene plan:
                     video_purpose=req_data.get("video_purpose", "video"),
                     duration=float(req_data.get("duration", 0)),
                     theme=req_data.get("theme"),
-                    quality=req_data.get("quality", "1080p"),
                 )
 
                 # Extract scenes
@@ -177,7 +177,6 @@ Output format for the final scene plan:
                 # Create scene plan
                 scene_plan = ScenePlan(
                     total_duration=requirements.duration,
-                    quality=requirements.quality,
                     theme=requirements.theme,
                     scenes=scenes,
                 )

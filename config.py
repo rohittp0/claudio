@@ -41,9 +41,6 @@ class Config(BaseModel):
     )
 
     # Video Generation Defaults
-    default_video_quality: str = Field(
-        default_factory=lambda: os.getenv("DEFAULT_VIDEO_QUALITY", "1080p")
-    )
     max_scene_duration: int = Field(
         default_factory=lambda: int(os.getenv("MAX_SCENE_DURATION", "8"))
     )

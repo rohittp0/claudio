@@ -1,21 +1,19 @@
 """Production Orchestrator Agent for executing video generation."""
 
 import asyncio
-from pathlib import Path
 from typing import Any
 
 import structlog
 
-from claudio.mcp_server.tools import (
+from models.workflow_state import WorkflowState, WorkflowStatus
+from tools.tools import (
     concatenate_videos_tool,
     estimate_cost_tool,
     generate_image_tool,
     generate_video_tool,
 )
-from claudio.models.workflow_state import WorkflowState, WorkflowStatus
-from claudio.utils.async_utils import ProgressTracker
-from claudio.utils.file_manager import FileManager
-from claudio.utils.state_manager import StateManager
+from utils.async_utils import ProgressTracker
+from utils.state_manager import StateManager
 
 logger = structlog.get_logger(__name__)
 
@@ -50,7 +48,7 @@ class ProductionOrchestratorAgent:
         )
 
         if result["success"]:
-            from claudio.models.workflow_state import CostEstimate
+            from models.workflow_state import CostEstimate
 
             state.estimated_cost = CostEstimate(
                 images_cost=result["images_cost"],
@@ -231,10 +229,8 @@ class ProductionOrchestratorAgent:
                 session_id=state.session_id,
                 scene_id=scene.scene_id,
                 prompt=scene.video_prompt,
-                duration=scene.duration,
                 end_image_path=scene.image_path,
                 start_image_path=prev_image_path,
-                resolution=state.scene_plan.quality if state.scene_plan else "1080p",
             )
 
             if result["success"]:

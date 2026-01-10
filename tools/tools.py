@@ -7,12 +7,11 @@ from typing import Any, Optional
 import ffmpeg
 import structlog
 
-from claudio.api_clients.nano_banana_client import NanoBananaClient
-from claudio.api_clients.veo_client import VeoClient
-from claudio.config import get_config
-from claudio.models.workflow_state import CostEstimate
-from claudio.utils.file_manager import FileManager
-from claudio.utils.state_manager import StateManager
+from api_clients.nano_banana_client import NanoBananaClient
+from api_clients.veo_client import VeoClient
+from models.workflow_state import CostEstimate
+from utils.file_manager import FileManager
+from utils.state_manager import StateManager
 
 logger = structlog.get_logger(__name__)
 
@@ -74,10 +73,8 @@ async def generate_video_tool(
     session_id: str,
     scene_id: str,
     prompt: str,
-    duration: float,
     end_image_path: str,
     start_image_path: Optional[str] = None,
-    resolution: str = "1080p",
 ) -> dict[str, Any]:
     """Generate a video using Veo 3 API.
 
@@ -85,10 +82,8 @@ async def generate_video_tool(
         session_id: The session identifier
         scene_id: The scene identifier
         prompt: Text description of the video
-        duration: Video duration in seconds (max 8)
         end_image_path: Path to image for the last frame
         start_image_path: Optional path to image for the first frame
-        resolution: Video resolution (default: "1080p")
 
     Returns:
         Dictionary with video path and success status
@@ -109,11 +104,9 @@ async def generate_video_tool(
         # Generate and save video
         saved_path = await client.generate_and_save_video(
             prompt=prompt,
-            duration=duration,
             output_path=output_path,
             end_image_path=end_image,
             start_image_path=start_image,
-            resolution=resolution,  # type: ignore
         )
 
         logger.info("tool.generate_video.success", path=str(saved_path))
@@ -262,7 +255,7 @@ async def save_state_tool(
     try:
         import json
 
-        from claudio.models.workflow_state import WorkflowState
+        from models.workflow_state import WorkflowState
 
         # Parse JSON
         state_dict = json.loads(state_json)
@@ -353,26 +346,20 @@ TOOLS = [
     },
     {
         "name": "generate_video",
-        "description": "Generate a video segment using Veo 3 API with image constraints",
+        "description": "Generate an 8-second video segment using Veo 3.1 API with image constraints. Note: Veo 3.1 always generates fixed 8-second videos.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "session_id": {"type": "string", "description": "Session identifier"},
                 "scene_id": {"type": "string", "description": "Scene identifier"},
                 "prompt": {"type": "string", "description": "Video description prompt"},
-                "duration": {"type": "number", "description": "Video duration in seconds (max 8)"},
                 "end_image_path": {"type": "string", "description": "Path to end-frame image"},
                 "start_image_path": {
                     "type": "string",
-                    "description": "Optional path to start-frame image",
-                },
-                "resolution": {
-                    "type": "string",
-                    "description": "Video resolution (720p or 1080p)",
-                    "default": "1080p",
+                    "description": "Optional path to start-frame image for continuity",
                 },
             },
-            "required": ["session_id", "scene_id", "prompt", "duration", "end_image_path"],
+            "required": ["session_id", "scene_id", "prompt", "end_image_path"],
         },
         "handler": generate_video_tool,
     },

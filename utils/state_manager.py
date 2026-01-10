@@ -6,8 +6,8 @@ from typing import Optional
 
 import aiofiles
 
-from claudio.config import get_session_state_file
-from claudio.models.workflow_state import WorkflowState
+from config import get_session_state_file
+from models.workflow_state import WorkflowState
 
 
 class StateManager:
@@ -93,7 +93,7 @@ class StateManager:
         Returns:
             List of session IDs
         """
-        from claudio.config import config
+        from config import config
 
         sessions_dir = config.workspace_dir / "sessions"
 

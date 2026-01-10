@@ -38,7 +38,6 @@ class ScenePlan(BaseModel):
     """Complete scene plan for a video."""
 
     total_duration: float = Field(..., gt=0, description="Total video duration in seconds")
-    quality: str = Field(..., description="Video quality (720p, 1080p, etc.)")
     theme: Optional[str] = Field(default=None, description="Overall theme/style of the video")
     scenes: list[Scene] = Field(..., min_length=1, description="List of scenes in order")
 
@@ -88,7 +87,6 @@ class ScenePlan(BaseModel):
         json_schema_extra = {
             "example": {
                 "total_duration": 20.0,
-                "quality": "1080p",
                 "theme": "vibrant, energetic, fun",
                 "scenes": [
                     {
@@ -115,7 +113,6 @@ class VideoRequirements(BaseModel):
     video_purpose: str = Field(..., description="Purpose of the video (e.g., advertisement, tutorial)")
     duration: float = Field(..., gt=0, description="Desired video duration in seconds")
     theme: Optional[str] = Field(default=None, description="Theme/style (e.g., fun, professional)")
-    quality: str = Field(default="1080p", description="Video quality (720p, 1080p)")
     additional_context: Optional[str] = Field(
         default=None, description="Any additional context or requirements"
     )
@@ -129,7 +126,6 @@ class VideoRequirements(BaseModel):
                 "video_purpose": "20% discount advertisement",
                 "duration": 20.0,
                 "theme": "fun, family-friendly, energetic",
-                "quality": "1080p",
                 "additional_context": "Emphasize the quality of ingredients",
             }
         }

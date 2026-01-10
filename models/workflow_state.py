@@ -6,7 +6,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from claudio.models.scene import ScenePlan, VideoRequirements
+from models.scene import ScenePlan, VideoRequirements
 
 
 class WorkflowStatus(str, Enum):
@@ -200,9 +200,8 @@ class WorkflowState(BaseModel):
                     "video_purpose": "discount advertisement",
                     "duration": 20.0,
                     "theme": "fun, energetic",
-                    "quality": "1080p",
                 },
-                "scene_plan": {"total_duration": 20.0, "quality": "1080p", "scenes": []},
+                "scene_plan": {"total_duration": 20.0, "scenes": []},
                 "estimated_cost": {"images_cost": 0.50, "videos_cost": 8.00, "total_cost": 8.50},
             }
         }

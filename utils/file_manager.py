@@ -6,7 +6,7 @@ from typing import Optional
 
 import aiofiles
 
-from claudio.config import get_session_dir, get_session_images_dir, get_session_videos_dir
+from config import get_session_dir, get_session_images_dir, get_session_videos_dir
 
 
 class FileManager:
