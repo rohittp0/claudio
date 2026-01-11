@@ -53,6 +53,9 @@ logs/
 workspace/
 .claudio/
 
+# But keep skill configuration
+!.claude/skills/
+
 # Temporary files
 *.tmp
 *.bak

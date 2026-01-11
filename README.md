@@ -192,6 +192,103 @@ Total Duration: 20.0s
 ============================================================
 ```
 
+### Using with Claude Code CLI
+
+Claudio can also be used as an MCP (Model Context Protocol) skill in Claude Code CLI, allowing Claude to act as your video director agent.
+
+#### Setup
+
+The skill is automatically discovered by Claude Code CLI from the `.claude/skills/video-director/` directory. Simply ensure you have:
+
+1. Installed dependencies: `pip install -r requirements.txt`
+2. Configured API keys in `.env` file
+3. FFmpeg installed on your system
+
+#### Usage
+
+Ask Claude to create a video naturally:
+
+```
+Create a 20-second advertisement for Joe's Pizza
+```
+
+Claude will:
+1. **Ask clarifying questions** to understand your requirements
+2. **Plan scenes** automatically (breaking into 8-second segments)
+3. **Estimate costs** and ask for approval
+4. **Generate images** for each scene's end-frame
+5. **Generate videos** using Veo 3.1 with image constraints
+6. **Concatenate** all segments into a final video
+7. **Return the path** to your completed video
+
+#### Available MCP Tools
+
+When using Claude Code CLI, Claude has access to these tools:
+
+- **create_session_id()** - Generate unique session identifier
+- **estimate_cost()** - Calculate generation costs before proceeding
+- **generate_image()** - Create end-frame images using Imagen
+- **generate_video()** - Generate 8-second video segments using Veo 3.1
+- **concatenate_videos()** - Combine segments into final video
+- **save_workflow_state()** - Persist workflow for resuming later
+- **load_workflow_state()** - Resume a previous workflow
+
+#### Example Conversation
+
+```
+You: Create a 15-second coffee commercial with a modern aesthetic
+
+Claude: I'll create a 15-second coffee commercial for you! To make it perfect, I need a bit more info:
+        1. What's the main message? (e.g., "Best coffee in town", "New seasonal blend")
+        2. Any specific scenes you want? (e.g., coffee being poured, people enjoying it)
+
+You: Focus on the brewing process and the rich aroma. Message: "Handcrafted Excellence"
+
+Claude: Perfect! For 15 seconds, I'll plan 2 scenes:
+
+        Scene 1 (8s): Close-up of coffee being ground, steam rising, beans falling
+        Scene 2 (7s): Pour-over brewing process, final cup with "Handcrafted Excellence" overlay
+
+        Let me estimate the cost...
+        [Uses estimate_cost tool]
+
+        Total: $6.20 ($0.20 for images + $6.00 for videos)
+
+        Shall I proceed?
+
+You: Yes
+
+Claude: [Creates session ID]
+        [Generates scene_1 end-frame image]
+        [Generates scene_2 end-frame image]
+        [Generates scene_1 video]
+        [Generates scene_2 video with scene_1's end-frame as start]
+        [Concatenates videos]
+
+        ✓ Done! Your video is ready at: ~/.claudio/sessions/abc-123/final.mp4
+```
+
+#### Advantages vs Python CLI
+
+- **Natural conversation** - Claude understands context and asks relevant questions
+- **No separate planning agent** - Claude IS the planning agent
+- **Flexible workflow** - Adapt on the fly based on user feedback
+- **Full context** - Works with Claude Code's understanding of your project
+- **Reusable tools** - Same tools can be used by any MCP client
+
+#### Testing the MCP Server
+
+To test the server manually:
+
+```bash
+# Start the server (waits for JSON-RPC messages on stdin)
+python mcp_server.py
+
+# In another terminal, use MCP Inspector to test
+npm install -g @modelcontextprotocol/inspector
+mcp-inspector python mcp_server.py
+```
+
 ## Project Structure
 
 ```
