@@ -83,7 +83,7 @@ class NanoBananaClient(BaseAPIClient):
         """
 
 
-        def _sync_generate() -> None:
+        def _sync_generate() -> Path:
             # Generate image using Gemini API
             response = self.client.models.generate_content(
                 model=self.model_name,
@@ -96,7 +96,7 @@ class NanoBananaClient(BaseAPIClient):
                     # Convert to PIL image
                     image = part.as_image()
                     image.save(str(output_path))
-                    return
+                    return output_path
 
             raise ValueError("No image data found in response")
 
