@@ -27,6 +27,18 @@ async def generate_video(state) -> None:
         print(f"⚠️  Cost estimation failed: {cost_result.get('error')}\\n")
 
     # Phase 3: Production
+    # Workflow:
+    # 1. Generate images:
+    #    - First scene: Generate start-frame AND end-frame images
+    #      (start-frame shows initial state, end-frame shows final state)
+    #    - Other scenes: Generate only end-frame images
+    #      (previous scene's end-frame becomes this scene's start-frame)
+    # 2. Generate videos:
+    #    - Veo 3.1 interpolation requires BOTH start and end frames
+    #    - Generates 8-second video interpolating between the two frames
+    #    - First scene uses its generated start-frame
+    #    - Other scenes use previous scene's end-frame as start-frame
+    # 3. Concatenate all video segments into final video
     print(f"\\n{'='*60}")
     print("Phase 3: Video Production\\n")
 

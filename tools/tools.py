@@ -74,16 +74,18 @@ async def generate_video_tool(
     scene_id: str,
     prompt: str,
     end_image_path: str,
-    start_image_path: Optional[str] = None,
+    start_image_path: str,
 ) -> dict[str, Any]:
     """Generate a video using Veo 3 API.
+
+    Both start and end images are required for Veo 3.1's interpolation mode.
 
     Args:
         session_id: The session identifier
         scene_id: The scene identifier
         prompt: Text description of the video
-        end_image_path: Path to image for the last frame
-        start_image_path: Optional path to image for the first frame
+        end_image_path: Path to image for the last frame (required)
+        start_image_path: Path to image for the first frame (required)
 
     Returns:
         Dictionary with video path and success status
@@ -98,8 +100,8 @@ async def generate_video_tool(
         output_path = FileManager.get_video_path(session_id, scene_id)
 
         # Convert string paths to Path objects
-        end_image = Path(end_image_path) if end_image_path else None
-        start_image = Path(start_image_path) if start_image_path else None
+        end_image = Path(end_image_path)
+        start_image = Path(start_image_path)
 
         # Generate and save video
         saved_path = await client.generate_and_save_video(
@@ -346,20 +348,20 @@ TOOLS = [
     },
     {
         "name": "generate_video",
-        "description": "Generate an 8-second video segment using Veo 3.1 API with image constraints. Note: Veo 3.1 always generates fixed 8-second videos.",
+        "description": "Generate an 8-second video segment using Veo 3.1 API with image constraints. Note: Veo 3.1 always generates fixed 8-second videos. Both start and end images are required for interpolation mode.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "session_id": {"type": "string", "description": "Session identifier"},
                 "scene_id": {"type": "string", "description": "Scene identifier"},
                 "prompt": {"type": "string", "description": "Video description prompt"},
-                "end_image_path": {"type": "string", "description": "Path to end-frame image"},
+                "end_image_path": {"type": "string", "description": "Path to end-frame image (required)"},
                 "start_image_path": {
                     "type": "string",
-                    "description": "Optional path to start-frame image for continuity",
+                    "description": "Path to start-frame image for continuity (required)",
                 },
             },
-            "required": ["session_id", "scene_id", "prompt", "end_image_path"],
+            "required": ["session_id", "scene_id", "prompt", "end_image_path", "start_image_path"],
         },
         "handler": generate_video_tool,
     },

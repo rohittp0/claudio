@@ -60,7 +60,7 @@ class ProductionOrchestratorAgent:
         return result
 
     async def generate_images(self, state: WorkflowState) -> tuple[int, int]:
-        """Generate all scene end-frame images in parallel.
+        """Generate all scene images in parallel, including first scene's start image.
 
         Args:
             state: Current workflow state
@@ -72,19 +72,31 @@ class ProductionOrchestratorAgent:
             raise ValueError("No scene plan available")
 
         scenes = state.scene_plan.scenes
-        logger.info("generating_images", count=len(scenes))
+
+        # Calculate total images to generate (all end images + first scene start image)
+        total_images = len(scenes)
+        if scenes and scenes[0].start_image_prompt:
+            total_images += 1  # Add one for first scene's start image
+
+        logger.info("generating_images", count=total_images)
 
         # Update status
         state.update_status(WorkflowStatus.GENERATING_IMAGES)
         await StateManager.save_state(state)
 
         # Create progress tracker
-        tracker = ProgressTracker(len(scenes))
+        tracker = ProgressTracker(total_images)
 
         # Generate images in parallel
         tasks = []
-        for scene in scenes:
-            task = self._generate_scene_image(state, scene, tracker)
+        for i, scene in enumerate(scenes):
+            # FIRST SCENE: Also generate start-frame image
+            if i == 0 and scene.start_image_prompt:
+                start_task = self._generate_scene_image(state, scene, tracker, is_start_frame=True)
+                tasks.append(start_task)
+
+            # Generate end-frame image for all scenes
+            task = self._generate_scene_image(state, scene, tracker, is_start_frame=False)
             tasks.append(task)
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -97,58 +109,83 @@ class ProductionOrchestratorAgent:
             "images_generation_complete",
             successful=successful,
             failed=failed,
-            total=len(scenes),
+            total=total_images,
         )
 
         return successful, failed
 
     async def _generate_scene_image(
-        self, state: WorkflowState, scene: Any, tracker: ProgressTracker
+        self,
+        state: WorkflowState,
+        scene: Any,
+        tracker: ProgressTracker,
+        is_start_frame: bool = False,
     ) -> dict[str, Any]:
-        """Generate image for a single scene.
+        """Generate image for a single scene (start or end frame).
 
         Args:
             state: Current workflow state
             scene: Scene to generate image for
             tracker: Progress tracker
+            is_start_frame: If True, generate start frame; otherwise end frame
 
         Returns:
             Result dictionary from generate_image_tool
         """
         try:
-            # Generate image
+            logger.info("generating_scene_image", scene_id=scene.scene_id, is_start=is_start_frame)
+
+            # Use start or end image prompt
+            prompt = scene.start_image_prompt if is_start_frame else scene.end_image_prompt
+
+            # Generate image with modified scene_id for start frames
             result = await generate_image_tool(
                 session_id=state.session_id,
-                scene_id=scene.scene_id,
-                prompt=scene.end_image_prompt,
+                scene_id=f"{scene.scene_id}_start" if is_start_frame else scene.scene_id,
+                prompt=prompt,
                 aspect_ratio="16:9",
                 quality="hd",
             )
 
             if result["success"]:
-                # Update scene and state
-                scene.image_generated = True
-                scene.image_path = result["image_path"]
-                state.production_state.mark_image_generated(scene.scene_id)
-                state.assets.add_image(scene.scene_id, result["image_path"])
+                # Store the image path in the scene
+                if is_start_frame:
+                    scene.start_image_path = result["image_path"]
+                else:
+                    scene.image_generated = True
+                    scene.image_path = result["image_path"]
+                    state.production_state.mark_image_generated(scene.scene_id)
+
+                state.assets.add_image(
+                    f"{scene.scene_id}_start" if is_start_frame else scene.scene_id,
+                    result["image_path"]
+                )
                 await StateManager.save_state(state)
                 await tracker.mark_completed()
 
-                logger.info("scene_image_generated", scene_id=scene.scene_id)
+                logger.info("scene_image_success", scene_id=scene.scene_id, is_start=is_start_frame)
             else:
-                state.production_state.mark_scene_failed(scene.scene_id)
+                if not is_start_frame:
+                    state.production_state.mark_scene_failed(scene.scene_id)
                 await tracker.mark_failed()
                 logger.error(
                     "scene_image_failed",
                     scene_id=scene.scene_id,
+                    is_start=is_start_frame,
                     error=result.get("error"),
                 )
 
             return result
 
         except Exception as e:
-            logger.error("scene_image_exception", scene_id=scene.scene_id, error=str(e))
-            state.production_state.mark_scene_failed(scene.scene_id)
+            logger.error(
+                "scene_image_exception",
+                scene_id=scene.scene_id,
+                is_start=is_start_frame,
+                error=str(e)
+            )
+            if not is_start_frame:
+                state.production_state.mark_scene_failed(scene.scene_id)
             await tracker.mark_failed()
             return {"success": False, "error": str(e)}
 
@@ -177,13 +214,29 @@ class ProductionOrchestratorAgent:
         # Generate videos in parallel
         tasks = []
         for i, scene in enumerate(scenes):
-            # Get previous scene's end image for continuity (except first scene)
-            prev_image_path = None
+            # Get start image for this scene
+            start_image_path = None
             if i > 0:
+                # Use previous scene's end image as this scene's start image
                 prev_scene = scenes[i - 1]
-                prev_image_path = prev_scene.image_path
+                start_image_path = prev_scene.image_path
+            else:
+                # FIRST SCENE: Use the generated start image
+                start_image_path = scene.start_image_path
 
-            task = self._generate_scene_video(state, scene, prev_image_path, tracker)
+            # Validate start image exists
+            if not start_image_path:
+                logger.error(
+                    "missing_start_image",
+                    scene_id=scene.scene_id,
+                    scene_index=i,
+                )
+                # Mark as failed and continue
+                state.production_state.mark_scene_failed(scene.scene_id)
+                await tracker.mark_failed()
+                continue
+
+            task = self._generate_scene_video(state, scene, start_image_path, tracker)
             tasks.append(task)
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -205,7 +258,7 @@ class ProductionOrchestratorAgent:
         self,
         state: WorkflowState,
         scene: Any,
-        prev_image_path: str | None,
+        start_image_path: str | None,
         tracker: ProgressTracker,
     ) -> dict[str, Any]:
         """Generate video for a single scene.
@@ -213,16 +266,20 @@ class ProductionOrchestratorAgent:
         Args:
             state: Current workflow state
             scene: Scene to generate video for
-            prev_image_path: Path to previous scene's end image (for continuity)
+            start_image_path: Path to start frame image (required)
             tracker: Progress tracker
 
         Returns:
             Result dictionary from generate_video_tool
         """
         try:
-            # Ensure image is generated first
+            # Ensure end image is generated first
             if not scene.image_generated or not scene.image_path:
-                raise ValueError(f"Image not generated for scene {scene.scene_id}")
+                raise ValueError(f"End image not generated for scene {scene.scene_id}")
+
+            # Ensure start image exists
+            if not start_image_path:
+                raise ValueError(f"Start image not provided for scene {scene.scene_id}")
 
             # Generate video
             result = await generate_video_tool(
@@ -230,7 +287,7 @@ class ProductionOrchestratorAgent:
                 scene_id=scene.scene_id,
                 prompt=scene.video_prompt,
                 end_image_path=scene.image_path,
-                start_image_path=prev_image_path,
+                start_image_path=start_image_path,
             )
 
             if result["success"]:

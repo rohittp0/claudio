@@ -4,9 +4,8 @@ import asyncio
 from pathlib import Path
 from typing import Literal, Optional
 
-from google import genai
-from google.genai import types
 import structlog
+from google import genai
 
 from api_clients.base_client import BaseAPIClient
 from config import get_config
@@ -43,10 +42,18 @@ class VeoClient(BaseAPIClient):
         self,
         prompt: str,
         output_path: Path,
-        end_image_path: Optional[Path] = None,
-        start_image_path: Optional[Path] = None,
+        end_image_path: Path,
+        start_image_path: Path,
     ):
-        """Generate a video from a text prompt with optional image constraints.
+        """Generate a video from a text prompt with start and end frame images.
+
+        Both start and end images are required for Veo 3.1's interpolation mode.
+
+        Args:
+            prompt: Text description of the video
+            output_path: Path to save the generated video
+            end_image_path: Path to the end-frame image (required)
+            start_image_path: Path to the start-frame image (required)
         """
         try:
             logger.info(
@@ -55,6 +62,12 @@ class VeoClient(BaseAPIClient):
                 has_start_image=start_image_path is not None,
                 has_end_image=end_image_path is not None,
             )
+
+            # Validate both images exist
+            if not start_image_path or not start_image_path.exists():
+                raise ValueError(f"Start image is required but not found: {start_image_path}")
+            if not end_image_path or not end_image_path.exists():
+                raise ValueError(f"End image is required but not found: {end_image_path}")
 
             # Generate video using Gemini API
             await self._retry_with_backoff(
@@ -79,16 +92,19 @@ class VeoClient(BaseAPIClient):
     async def _generate_video_request(
         self,
         prompt: str,
-        start_image_path: Optional[Path],
-        end_image_path: Optional[Path],
+        start_image_path: Path,
+        end_image_path: Path,
         output_path: Path
     ):
         """Make the actual video generation request.
 
+        Both start and end images are required for Veo 3.1's interpolation mode.
+
         Args:
             prompt: Text description of the video
-            start_image_path: Optional start frame image
-            end_image_path: Optional end frame image
+            start_image_path: Start frame image (required)
+            end_image_path: End frame image (required)
+            output_path: Path to save the generated video
 
         Returns:
             Video data as bytes
@@ -96,29 +112,26 @@ class VeoClient(BaseAPIClient):
 
         def _sync_generate():
             import time
-            from PIL import Image
+            from google.genai import types
 
-            # Load start image if provided
-            start_image = None
-            if start_image_path and start_image_path.exists():
-                start_image = Image.open(start_image_path)
+            # Load start image (now guaranteed to exist)
+            start_image = types.Image.from_file(location=str(start_image_path))
 
-            # Load end image if provided
-            end_image = None
-            if end_image_path and end_image_path.exists():
-                end_image = Image.open(end_image_path)
+            # Load end image (now guaranteed to exist)
+            end_image = types.Image.from_file(location=str(end_image_path))
 
-            # Prepare config with optional last frame
-            config_kwargs = {}
-            if end_image:
-                config_kwargs["last_frame"] = end_image
+            # Build config with last frame for interpolation
+            config = types.GenerateVideosConfig(
+                last_frame=end_image,
+                duration_seconds=8,
+            )
 
-            # Generate video operation
+            # Generate video operation with both images
             operation = self.client.models.generate_videos(
                 model=self.model_name,
                 prompt=prompt,
                 image=start_image,
-                config=types.GenerateVideosConfig(**config_kwargs) if config_kwargs else None,
+                config=config,
             )
 
             # Poll the operation status until the video is ready

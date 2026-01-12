@@ -15,13 +15,31 @@ This skill enables Claude to act as your video director, creating professional v
 
 ## How It Works
 
+### Image Generation
+
+Claudio uses Google's Imagen (via Nano Banana) to generate key frames:
+- **First scene**: Generates BOTH a start-frame and end-frame image
+  - Start-frame: Initial state before action begins
+  - End-frame: Final state after the scene action
+- **Subsequent scenes**: Only generates end-frame images
+  - Start-frame: Uses previous scene's end-frame for smooth transitions
+
+### Video Generation
+
+Veo 3.1 uses interpolation mode which REQUIRES both start and end frames:
+- Takes two images (start and end) and generates an 8-second video interpolating between them
+- Creates smooth motion from start frame to end frame
+- Each video segment is exactly 8 seconds (API constraint)
+
 ### Workflow
 
 1. **Planning**: Claude asks questions to understand your video requirements (duration, theme, purpose)
 2. **Scene Breakdown**: For videos longer than 8 seconds, Claude creates multiple scenes
 3. **Cost Estimation**: Claude calculates the cost before proceeding
-4. **Image Generation**: Generates end-frame images for each scene
-5. **Video Generation**: Creates 8-second video segments with image constraints
+4. **Image Generation**:
+   - First scene: Generates start-frame AND end-frame images
+   - Other scenes: Generates only end-frame images
+5. **Video Generation**: Creates 8-second video segments using interpolation between start and end frames
 6. **Concatenation**: Combines all segments into the final video
 
 ### Example Interaction
@@ -81,15 +99,15 @@ Creates end-frame images using Imagen.
 - `aspect_ratio`: Image aspect ratio (default: "16:9")
 - `quality`: "hd" or "standard" (default: "hd")
 
-### 3. generate_video(session_id, scene_id, prompt, end_image_path, start_image_path=None)
-Generates 8-second video segments using Veo 3.1.
+### 3. generate_video(session_id, scene_id, prompt, end_image_path, start_image_path)
+Generates 8-second video segments using Veo 3.1's interpolation mode.
 
 **Parameters:**
 - `session_id`: Session identifier
 - `scene_id`: Scene identifier
 - `prompt`: What happens in this 8-second scene
-- `end_image_path`: Path to end-frame image
-- `start_image_path`: Optional start-frame for continuity
+- `end_image_path`: Path to end-frame image (required)
+- `start_image_path`: Path to start-frame image (required for interpolation)
 
 ### 4. concatenate_videos(session_id, video_paths)
 Combines video segments using FFmpeg.
@@ -135,10 +153,15 @@ Loads a previously saved workflow.
 - **Images**: $0.10 per image
 - **Videos**: $0.40 per second
 
+**Image count calculation:**
+- First scene: 2 images (start + end)
+- Each additional scene: 1 image (end only)
+- Formula: (num_scenes + 1) images total
+
 **Example costs:**
-- 10-second video (2 scenes): ~$4.20 ($0.20 images + $4.00 videos)
-- 20-second video (3 scenes): ~$8.30 ($0.30 images + $8.00 videos)
-- 60-second video (8 scenes): ~$24.80 ($0.80 images + $24.00 videos)
+- 10-second video (2 scenes, 3 images): ~$4.30 ($0.30 images + $4.00 videos)
+- 20-second video (3 scenes, 4 images): ~$8.40 ($0.40 images + $8.00 videos)
+- 60-second video (8 scenes, 9 images): ~$24.90 ($0.90 images + $24.00 videos)
 
 Always call `estimate_cost` before generation!
 
@@ -168,6 +191,7 @@ Generated assets are stored in:
 ```
 ~/.claudio/sessions/<session_id>/
 ├── images/
+│   ├── scene_1_start.png  ← Start-frame for first scene
 │   ├── scene_1_end.png
 │   ├── scene_2_end.png
 │   └── scene_3_end.png

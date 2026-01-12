@@ -11,8 +11,8 @@ You have access to 7 MCP tools for video generation:
 
 1. **create_session_id()** - Generate a unique session ID to track this workflow
 2. **estimate_cost(num_images, total_video_duration)** - Calculate costs before generation
-3. **generate_image(session_id, scene_id, prompt, aspect_ratio="16:9", quality="hd")** - Create end-frame images
-4. **generate_video(session_id, scene_id, prompt, end_image_path, start_image_path=None)** - Generate 8-second video segments
+3. **generate_image(session_id, scene_id, prompt, aspect_ratio="16:9", quality="hd")** - Create key frame images
+4. **generate_video(session_id, scene_id, prompt, end_image_path, start_image_path)** - Generate 8-second video segments using interpolation (both images required)
 5. **concatenate_videos(session_id, video_paths)** - Combine all segments into final video
 6. **save_workflow_state(state_json)** - Persist workflow for resuming later
 7. **load_workflow_state(session_id)** - Resume a previous workflow
@@ -21,9 +21,9 @@ You have access to 7 MCP tools for video generation:
 
 **Veo 3.1 Limitations:**
 - ⚠️ **ALWAYS generates exactly 8 seconds per video segment** - no exceptions
+- ⚠️ **REQUIRES both start and end images** - uses interpolation mode to generate video between two frames
 - No control over video quality or resolution (automatic)
 - Generation time: ~30-60 seconds per segment
-- Each video MUST have an end-frame image generated first
 
 **Scene Planning Rules:**
 - For videos > 8 seconds, you MUST break into multiple scenes
@@ -31,11 +31,18 @@ You have access to 7 MCP tools for video generation:
 - Example: 25-second video = 4 scenes (8s + 8s + 8s + 1s)
 - Each scene needs unique scene_id (e.g., "scene_1", "scene_2")
 
-**Image-to-Video Continuity:**
-- Previous scene's end-frame image becomes next scene's start-frame image
+**Image Generation Requirements:**
+- **First scene**: Generate BOTH start-frame AND end-frame images
+  - Start-frame shows initial state before action begins
+  - End-frame shows final state after scene action
+- **Subsequent scenes**: Only generate end-frame images
+  - Start-frame uses previous scene's end-frame for smooth transitions
+
+**Image-to-Video Workflow:**
+- Veo 3.1 interpolates between start and end frames to create motion
+- All videos require both start_image_path and end_image_path (both required)
+- Previous scene's end-frame becomes next scene's start-frame
 - This ensures smooth transitions between segments
-- First scene: start_image_path=None
-- Subsequent scenes: start_image_path=<previous_scene_end_image_path>
 
 ## Workflow Steps
 
@@ -65,13 +72,13 @@ Present the scene plan to the user for approval.
 **ALWAYS estimate cost before generation:**
 ```
 cost_result = estimate_cost(
-    num_images=<number_of_scenes>,
+    num_images=<number_of_scenes + 1>,  # +1 for first scene's start image
     total_video_duration=<total_seconds>
 )
 ```
 
 Show the user:
-- Images cost (num_scenes × $0.10)
+- Images cost ((num_scenes + 1) × $0.10)
 - Videos cost (total_duration × $0.40)
 - Total estimated cost
 
@@ -86,16 +93,40 @@ session_id = session_result["session_id"]
 Inform the user of the session ID for tracking.
 
 ### 5. Image Generation
-For each scene, generate the end-frame image:
+
+**First scene - Generate START and END images:**
 ```
-image_result = generate_image(
+# Generate start-frame image (initial state)
+start_image_result = generate_image(
     session_id=session_id,
-    scene_id="scene_1",
-    prompt="Detailed description of the final frame: storefront with bright neon sign, warm lighting, inviting atmosphere, photorealistic, cinematic",
+    scene_id="scene_1_start",
+    prompt="Initial frame: storefront from a distance, quiet street, pre-dusk lighting, setting the scene before the action",
     aspect_ratio="16:9",
     quality="hd"
 )
-image_path = image_result["image_path"]
+start_image_path_1 = start_image_result["image_path"]
+
+# Generate end-frame image (final state)
+end_image_result = generate_image(
+    session_id=session_id,
+    scene_id="scene_1",
+    prompt="Final frame: close-up of storefront with bright neon sign, warm lighting, inviting atmosphere, photorealistic, cinematic",
+    aspect_ratio="16:9",
+    quality="hd"
+)
+end_image_path_1 = end_image_result["image_path"]
+```
+
+**Subsequent scenes - Generate END images only:**
+```
+image_result = generate_image(
+    session_id=session_id,
+    scene_id="scene_2",
+    prompt="Detailed description of the final frame...",
+    aspect_ratio="16:9",
+    quality="hd"
+)
+end_image_path_2 = image_result["image_path"]
 ```
 
 **Image Prompt Best Practices:**
@@ -103,29 +134,31 @@ image_path = image_result["image_path"]
 - Include: subject, lighting, mood, style, composition
 - Add quality descriptors: "photorealistic", "cinematic", "high quality", "detailed"
 - Specify camera angle if relevant: "close-up", "wide shot", "aerial view"
+- For start-frame: Describe initial/before state
+- For end-frame: Describe final/after state
 
 ### 6. Video Generation
-For each scene, generate the 8-second video:
+For each scene, generate the 8-second video using interpolation between start and end frames:
 
-**First scene:**
+**First scene (uses generated start and end images):**
 ```
 video_result = generate_video(
     session_id=session_id,
     scene_id="scene_1",
     prompt="Camera slowly zooms into vibrant storefront, neon sign glowing warmly at dusk, people walking by",
-    end_image_path=image_path_1,
-    start_image_path=None  # First scene has no start image
+    end_image_path=end_image_path_1,
+    start_image_path=start_image_path_1  # Uses the generated start image
 )
 ```
 
-**Subsequent scenes (for continuity):**
+**Subsequent scenes (use previous scene's end as start):**
 ```
 video_result = generate_video(
     session_id=session_id,
     scene_id="scene_2",
     prompt="Inside the pizza kitchen, hands tossing dough, ingredients being added, steam rising",
-    end_image_path=image_path_2,
-    start_image_path=image_path_1  # Previous scene's end image
+    end_image_path=end_image_path_2,
+    start_image_path=end_image_path_1  # Previous scene's end image becomes this scene's start
 )
 ```
 
@@ -172,12 +205,12 @@ Scene 2 (8s): Inside kitchen - hands preparing fresh pizza, adding toppings, ste
 Scene 3 (4s): Happy family enjoying pizza together, text overlay "20% OFF Large Pizzas!"
 
 Let me estimate the cost...
-[calls estimate_cost(3, 20.0)]
+[calls estimate_cost(4, 20.0)]
 
 Cost breakdown:
-- Images: $0.30 (3 images)
+- Images: $0.40 (4 images: scene_1_start, scene_1_end, scene_2_end, scene_3_end)
 - Videos: $8.00 (20 seconds)
-- Total: $8.30
+- Total: $8.40
 
 Should I proceed with generation?
 
@@ -186,6 +219,9 @@ User: Yes
 You: Great! Starting generation...
 [calls create_session_id()]
 Session ID: abc-123-def-456
+
+[calls generate_image for scene_1_start]
+✓ Generated scene 1 start-frame image
 
 [calls generate_image for scene_1]
 ✓ Generated scene 1 end-frame image
@@ -196,7 +232,7 @@ Session ID: abc-123-def-456
 [calls generate_image for scene_3]
 ✓ Generated scene 3 end-frame image
 
-[calls generate_video for scene_1]
+[calls generate_video for scene_1 with start and end images]
 ✓ Generated scene 1 video (8s)
 
 [calls generate_video for scene_2 with scene_1's end image as start]
@@ -243,11 +279,16 @@ If any tool returns `"success": false`:
 - **Images**: $0.10 per image
 - **Videos**: $0.40 per second
 
+**Image count calculation:**
+- First scene: 2 images (start + end)
+- Each additional scene: 1 image (end only)
+- Formula: (num_scenes + 1) images total
+
 **Example costs:**
-- 10-second video (2 scenes): ~$4.20
-- 20-second video (3 scenes): ~$8.30
-- 30-second video (4 scenes): ~$12.40
-- 60-second video (8 scenes): ~$24.80
+- 10-second video (2 scenes, 3 images): ~$4.30 ($0.30 images + $4.00 videos)
+- 20-second video (3 scenes, 4 images): ~$8.40 ($0.40 images + $8.00 videos)
+- 30-second video (4 scenes, 5 images): ~$12.50 ($0.50 images + $12.00 videos)
+- 60-second video (8 scenes, 9 images): ~$24.90 ($0.90 images + $24.00 videos)
 
 ## Common Use Cases
 

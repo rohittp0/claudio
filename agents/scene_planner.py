@@ -181,6 +181,22 @@ Output format for the final scene plan:
                     scenes=scenes,
                 )
 
+                # Generate start image prompt for first scene
+                if scenes:
+                    first_scene = scenes[0]
+                    # Generate a start image prompt that represents the beginning state
+                    # This creates the initial frame before the video action begins
+                    first_scene.start_image_prompt = (
+                        f"Initial frame for: {first_scene.video_prompt}. "
+                        f"Show the starting state before the action begins."
+                    )
+
+                    logger.info(
+                        "generated_first_scene_start_prompt",
+                        scene_id=first_scene.scene_id,
+                        prompt=first_scene.start_image_prompt[:100],
+                    )
+
                 return requirements, scene_plan
 
         except Exception as e:

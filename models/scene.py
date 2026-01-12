@@ -12,12 +12,14 @@ class Scene(BaseModel):
     duration: float = Field(..., gt=0, le=8, description="Duration in seconds (max 8 for Veo API)")
     video_prompt: str = Field(..., description="Detailed prompt for video generation")
     end_image_prompt: str = Field(..., description="Prompt for generating the end-frame image")
+    start_image_prompt: Optional[str] = Field(default=None, description="Prompt for generating the start-frame image (first scene only)")
 
     # Production tracking
     image_generated: bool = Field(default=False, description="Whether end image has been generated")
     video_generated: bool = Field(default=False, description="Whether video has been generated")
     image_path: Optional[str] = Field(default=None, description="Path to generated end image")
     video_path: Optional[str] = Field(default=None, description="Path to generated video")
+    start_image_path: Optional[str] = Field(default=None, description="Path to generated start image (first scene only)")
 
     class Config:
         """Pydantic config."""
